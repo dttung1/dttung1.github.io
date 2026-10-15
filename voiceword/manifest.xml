@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Manifest add-in Word "Soạn bằng giọng nói".
+     Giao diện được phục vụ từ GitHub Pages. Khi tự host ở nơi khác, thay mọi https://dttung1.github.io/voiceword/addin/ cho đúng. -->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+           xsi:type="TaskPaneApp">
+  <Id>67df5056-a374-4a80-8d95-5d495693eb33</Id>
+  <Version>0.1.0.0</Version>
+  <ProviderName>VoiceWord</ProviderName>
+  <DefaultLocale>vi-VN</DefaultLocale>
+  <DisplayName DefaultValue="Soạn bằng giọng nói"/>
+  <Description DefaultValue="Đọc chữ và định dạng văn bản tiếng Việt bằng giọng nói, có trợ lý AI cho lệnh phức tạp."/>
+  <IconUrl DefaultValue="https://dttung1.github.io/voiceword/addin/icons/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://dttung1.github.io/voiceword/addin/icons/icon-64.png"/>
+  <SupportUrl DefaultValue="https://dttung1.github.io/voiceword/"/>
+  <AppDomains>
+    <AppDomain>https://dttung1.github.io</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Document"/>
+  </Hosts>
+  <Requirements>
+    <Sets DefaultMinVersion="1.3">
+      <Set Name="WordApi" MinVersion="1.3"/>
+    </Sets>
+  </Requirements>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://dttung1.github.io/voiceword/addin/taskpane.html"/>
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Document">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="GetStarted.Title"/>
+            <Description resid="GetStarted.Description"/>
+            <LearnMoreUrl resid="GetStarted.LearnMoreUrl"/>
+          </GetStarted>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="VoiceWord.Group">
+                <Label resid="Group.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16"/>
+                  <bt:Image size="32" resid="Icon.32"/>
+                  <bt:Image size="80" resid="Icon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="VoiceWord.Open">
+                  <Label resid="Button.Label"/>
+                  <Supertip>
+                    <Title resid="Button.Label"/>
+                    <Description resid="Button.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>VoiceWordPane</TaskpaneId>
+                    <SourceLocation resid="Taskpane.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16" DefaultValue="https://dttung1.github.io/voiceword/addin/icons/icon-16.png"/>
+        <bt:Image id="Icon.32" DefaultValue="https://dttung1.github.io/voiceword/addin/icons/icon-32.png"/>
+        <bt:Image id="Icon.80" DefaultValue="https://dttung1.github.io/voiceword/addin/icons/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://dttung1.github.io/voiceword/addin/taskpane.html"/>
+        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://dttung1.github.io/voiceword/"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="GetStarted.Title" DefaultValue="Soạn văn bản bằng giọng nói"/>
+        <bt:String id="Group.Label" DefaultValue="Giọng nói"/>
+        <bt:String id="Button.Label" DefaultValue="Soạn bằng giọng nói"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="GetStarted.Description" DefaultValue="Mở thẻ Trang đầu → Soạn bằng giọng nói, nhấn micro và bắt đầu nói."/>
+        <bt:String id="Button.Tooltip" DefaultValue="Mở khung đọc chữ và ra lệnh định dạng bằng giọng nói."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

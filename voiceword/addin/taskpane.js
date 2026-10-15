@@ -144,7 +144,7 @@ const desktop = () => ['PC', 'Mac'].includes(state.platform);
 // Word trên web dùng nhận dạng của trình duyệt.
 function effectiveSource() {
   if (settings.speechSource !== 'auto') return settings.speechSource;
-  return desktop() && server() ? 'relay' : 'webspeech';
+  return desktop() ? 'relay' : 'webspeech';
 }
 
 const listening = (on) => {
@@ -204,8 +204,8 @@ function setupVoice() {
     $('mic').setAttribute('aria-label', 'Mở trang micro');
     if (!server() || !settings.token) {
       voice.rec = null;
-      setStatus('Cần máy chủ để dùng trang micro');
-      $('interim').textContent = 'Mở Cài đặt → nhập địa chỉ máy chủ và mã truy cập.';
+      setStatus('Cần máy chủ để dùng giọng nói trên Word desktop');
+      $('interim').textContent = 'Bấm micro để mở Cài đặt, nhập địa chỉ máy chủ và mã truy cập.';
       return;
     }
     voice.pair = savedPair();
@@ -264,6 +264,7 @@ async function openMicPage() {
 }
 
 $('mic').addEventListener('click', () => {
+  if (voice.source === 'relay' && (!server() || !settings.token)) return $('open-settings').click();
   if (voice.source === 'relay') return openMicPage();
   if (!voice.rec?.supported) return;
   if (state.listening) voice.rec.stop(); else voice.rec.start();

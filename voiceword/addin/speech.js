@@ -15,6 +15,8 @@ export function createWebSpeech({ lang = 'vi-VN', onInterim, onFinal, onState, o
   if (!SR) return { supported: false, start() {}, stop() {} };
   let rec = null;
   let wanted = false;
+  let started = false;
+  let watchdog = null;
 
   const make = () => {
     const r = new SR();
@@ -41,9 +43,11 @@ export function createWebSpeech({ lang = 'vi-VN', onInterim, onFinal, onState, o
               : `Lỗi nhận dạng: ${e.error}`,
       );
     };
+    r.onstart = () => { started = true; clearTimeout(watchdog); onState?.(true); };
     r.onend = () => {
       onInterim?.('');
-      if (wanted) { try { r.start(); return; } catch { /* dừng hẳn */ } }
+      if (wanted && started) { try { r.start(); return; } catch { /* dừng hẳn */ } }
+      wanted = false;
       onState?.(false);
     };
     return r;
@@ -54,7 +58,16 @@ export function createWebSpeech({ lang = 'vi-VN', onInterim, onFinal, onState, o
     start() {
       wanted = true;
       rec = rec || make();
-      try { rec.start(); onState?.(true); } catch (e) { onError?.(`Không bật được micro: ${e.message}`); }
+      started = false;
+      try { rec.start(); } catch (e) { onError?.(`Không bật được micro: ${e.message}`); return; }
+      // Một số môi trường (Word desktop) có API nhưng không bao giờ bắt đầu nghe và không báo lỗi.
+      clearTimeout(watchdog);
+      watchdog = setTimeout(() => {
+        if (started) return;
+        wanted = false;
+        try { rec.abort(); } catch { /* bỏ qua */ }
+        onError?.('Micro không bật được ở đây. Trên Word desktop, hãy dùng “Trang micro riêng” (Cài đặt → nhập máy chủ).');
+      }, 4000);
     },
     stop() { wanted = false; rec?.stop(); },
   };

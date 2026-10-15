@@ -10,6 +10,7 @@ import { createRelay, issueSpeechToken } from './relay.js';
 const ORIGINS = (process.env.ALLOWED_ORIGINS || 'https://dttung1.github.io,https://localhost:3000').split(',').map((s) => s.trim());
 const RATE_PER_MIN = Number(process.env.RATE_PER_MIN || 30);
 const MAX_BODY = 64 * 1024;
+const POLL_MS = Number(process.env.POLL_MS || 25000);
 
 export function createHandler({ client, token = process.env.APP_TOKEN, log = console, relay = createRelay(), speechToken = issueSpeechToken } = {}) {
   if (!token) throw new Error('Thiếu APP_TOKEN: đặt một chuỗi bí mật để add-in dùng khi gọi máy chủ.');
@@ -55,7 +56,7 @@ export function createHandler({ client, token = process.env.APP_TOKEN, log = con
     const ip = req.socket.remoteAddress;
 
     // ----- Trang micro → add-in -----
-    const m = path.match(/^\/api\/pair\/([\w-]{4,20})\/(events|say)$/);
+    const m = path.match(/^\/api\/pair\/([\w-]{4,20})\/(events|say|poll)$/);
     if (req.method === 'POST' && path === '/api/pair') {
       if (!authed) return send(401, { error: 'Sai mã truy cập' });
       if (limited(`pair:${ip}`, 20)) return send(429, { error: 'Quá nhiều yêu cầu' });
@@ -70,6 +71,14 @@ export function createHandler({ client, token = process.env.APP_TOKEN, log = con
       const off = relay.subscribe(m[1], (ev) => (ev ? res.write(`data: ${JSON.stringify(ev)}\n\n`) : res.end()));
       req.on('close', () => { clearInterval(ping); off?.(); });
       return;
+    }
+    if (m && req.method === 'GET' && m[2] === 'poll') {
+      if (!authed) return send(401, { error: 'Sai mã truy cập' });
+      const after = Number(url.searchParams.get('after') ?? -1);
+      const result = await relay.poll(m[1], Number.isFinite(after) ? after : -1, POLL_MS);
+      if (!result) return send(404, { error: 'Phiên ghép đã hết hạn' });
+      res.setHeader('Cache-Control', 'no-store');
+      return send(200, result);
     }
     if (m && req.method === 'POST' && m[2] === 'say') {
       if (!relay.checkKey(m[1], req.headers['x-pair-key'])) return send(401, { error: 'Mã ghép không đúng hoặc đã hết hạn' });

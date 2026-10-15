@@ -151,43 +151,47 @@ export function createAzureSpeech({ lang = 'vi-VN', getToken, onInterim, onFinal
   };
 }
 
-// ---------- Nhận chữ từ trang micro (luồng SSE qua máy chủ) ----------
+// ---------- Nhận chữ từ trang micro (long-polling qua máy chủ) ----------
+// Không dùng luồng SSE: một số đường hầm/proxy (Cloudflare) giữ dữ liệu lại nên chữ không tới Word.
+// Long-polling đi qua được mọi proxy: hỏi máy chủ, máy chủ trả lời ngay khi có chữ mới (chờ tối đa ~25 giây).
 export function createRelayListener({ serverUrl, appToken, pair, onInterim, onFinal, onMic, onConnected, onError }) {
   let active = false;
   let ctrl = null;
 
+  const handle = (ev) => {
+    if (ev.type === 'mic') onMic?.(ev.on);
+    else if (ev.final) { onInterim?.(''); onFinal?.(ev.text); } else onInterim?.(ev.text);
+  };
+
   async function loop() {
+    let after = -1;
+    let connected = false;
     while (active) {
       try {
         ctrl = new AbortController();
-        const res = await fetch(`${serverUrl}/api/pair/${pair}/events`, { headers: { Authorization: `Bearer ${appToken}` }, signal: ctrl.signal });
-        if (res.status === 404) { onError?.('Phiên ghép đã hết hạn. Bấm “Mở trang micro” để ghép lại.', true); active = false; break; }
-        if (!res.ok || !res.body) throw new Error(`Máy chủ trả lỗi ${res.status}`);
-        onConnected?.(true);
-        const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-        let buf = '';
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buf += value;
-          let i;
-          while ((i = buf.indexOf('\n\n')) >= 0) {
-            const chunk = buf.slice(0, i);
-            buf = buf.slice(i + 2);
-            const line = chunk.split('\n').find((l) => l.startsWith('data: '));
-            if (!line) continue;
-            const ev = JSON.parse(line.slice(6));
-            if (ev.type === 'mic') onMic?.(ev.on);
-            else if (ev.final) { onInterim?.(''); onFinal?.(ev.text); } else onInterim?.(ev.text);
-          }
-        }
+        const timer = setTimeout(() => ctrl.abort(), 40000);
+        const res = await fetch(`${serverUrl}/api/pair/${pair}/poll?after=${after}&t=${Date.now()}`, {
+          headers: { Authorization: `Bearer ${appToken}` }, signal: ctrl.signal, cache: 'no-store',
+        });
+        clearTimeout(timer);
+        if (res.status === 404) { onError?.('Phiên ghép đã hết hạn. Bấm micro để ghép lại.', true); active = false; break; }
+        if (!res.ok) throw new Error(`Máy chủ trả lỗi ${res.status}`);
+        const { events = [], last } = await res.json();
+        if (!connected) { connected = true; onConnected?.(true); }
+        // Chỉ xử lý chữ tạm mới nhất, nhưng mọi câu hoàn chỉnh và trạng thái micro theo đúng thứ tự.
+        const lastInterim = [...events].reverse().find((e) => e.type === 'text' && !e.final);
+        for (const ev of events) if (ev.type === 'mic' || ev.final || ev === lastInterim) handle(ev);
+        after = typeof last === 'number' ? last : after;
       } catch (e) {
         if (!active) break;
-        onError?.(e.name === 'TypeError' ? 'Mất kết nối máy chủ, đang thử lại…' : e.message, false);
+        if (e.name !== 'AbortError') {
+          if (connected) { connected = false; onConnected?.(false); }
+          onError?.(e instanceof TypeError ? 'Mất kết nối máy chủ, đang thử lại…' : e.message, false);
+          await new Promise((r) => setTimeout(r, 3000));
+        }
       }
-      onConnected?.(false);
-      if (active) await new Promise((r) => setTimeout(r, 3000));
     }
+    if (connected) onConnected?.(false);
   }
 
   return {

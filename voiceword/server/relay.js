@@ -18,7 +18,7 @@ export function createRelay({ now = () => Date.now() } = {}) {
       if (pairs.size >= MAX_PAIRS) throw new Error('Quá nhiều phiên ghép');
       const id = crypto.randomBytes(6).toString('base64url');
       const key = crypto.randomBytes(18).toString('base64url');
-      pairs.set(id, { key, expires: now() + TTL_MS, listeners: new Set() });
+      pairs.set(id, { key, expires: now() + TTL_MS, listeners: new Set(), seq: 0, log: [], waiters: new Set() });
       return { pair: id, key, expiresAt: now() + TTL_MS };
     },
     checkKey(id, key) {
@@ -36,8 +36,28 @@ export function createRelay({ now = () => Date.now() } = {}) {
     publish(id, event) {
       const p = pairs.get(id);
       if (!p) return 0;
-      p.listeners.forEach((fn) => fn(event));
-      return p.listeners.size;
+      const ev = { ...event, seq: ++p.seq };
+      p.log.push(ev);
+      if (p.log.length > 200) p.log.shift();
+      const delivered = p.listeners.size + p.waiters.size + (now() - (p.lastPoll || 0) < 30000 ? 1 : 0);
+      p.listeners.forEach((fn) => fn(ev));
+      p.waiters.forEach((fn) => fn());
+      return delivered > 0 ? 1 : 0;
+    },
+    // Long-polling: trả ngay các sự kiện sau `after`; nếu chưa có thì chờ tối đa timeoutMs.
+    // after < 0 → chỉ lấy mốc hiện tại (không phát lại chữ cũ khi add-in vừa mở).
+    poll(id, after, timeoutMs = 25000) {
+      const p = pairs.get(id);
+      if (!p || p.expires < now()) return Promise.resolve(null);
+      p.lastPoll = now();
+      const take = () => ({ events: p.log.filter((e) => e.seq > after), last: p.seq });
+      if (after < 0) return Promise.resolve({ events: [], last: p.seq });
+      if (p.log.some((e) => e.seq > after)) return Promise.resolve(take());
+      return new Promise((resolve) => {
+        const done = () => { clearTimeout(t); p.waiters.delete(done); p.lastPoll = now(); resolve(take()); };
+        const t = setTimeout(done, timeoutMs);
+        p.waiters.add(done);
+      });
     },
   };
 }

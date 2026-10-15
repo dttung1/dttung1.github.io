@@ -29,7 +29,7 @@ test('ghép trang micro và chuyển chữ tới add-in qua SSE', async () => {
 
     assert.equal((await (await say({ text: 'In đậm câu vừa rồi.', final: true })).json()).delivered, 1);
     const { value } = await reader.read();
-    assert.deepEqual(JSON.parse(value.trim().slice(6)), { type: 'text', text: 'In đậm câu vừa rồi.', final: true, on: false });
+    assert.deepEqual(JSON.parse(value.trim().slice(6)), { type: 'text', text: 'In đậm câu vừa rồi.', final: true, on: false, seq: 2 });
     ctrl.abort();
   });
 });
@@ -70,4 +70,24 @@ test('issueSpeechToken gọi đúng endpoint Azure', async () => {
   assert.deepEqual(called, ['https://southeastasia.api.cognitive.microsoft.com/sts/v1.0/issueToken', 'k']);
   assert.deepEqual(r, { token: 'jwt', region: 'southeastasia' });
   assert.equal(await issueSpeechToken({ key: '', region: '' }), null);
+});
+
+test('long-polling: lấy mốc, chờ chữ mới, trả ngay khi có', async () => {
+  await withServer({}, async (url) => {
+    const { pair, key } = await (await fetch(`${url}/api/pair`, { method: 'POST', headers: auth })).json();
+    const say = (body) => fetch(`${url}/api/pair/${pair}/say`, { method: 'POST', headers: { 'X-Pair-Key': key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json());
+    await say({ text: 'chữ cũ', final: true });
+    const first = await (await fetch(`${url}/api/pair/${pair}/poll?after=-1`, { headers: auth })).json();
+    assert.deepEqual(first, { events: [], last: 1 }, 'không phát lại chữ cũ');
+    const t0 = Date.now();
+    const waiting = fetch(`${url}/api/pair/${pair}/poll?after=1`, { headers: auth }).then((r) => r.json());
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal((await say({ text: 'Kính gửi', final: true })).delivered, 1, 'trang micro thấy Word đang nghe');
+    const got = await waiting;
+    assert.ok(Date.now() - t0 < 2000);
+    assert.equal(got.events[0].text, 'Kính gửi');
+    assert.equal(got.last, 2);
+    assert.equal((await fetch(`${url}/api/pair/khong-co/poll?after=0`, { headers: auth })).status, 404);
+    assert.equal((await fetch(`${url}/api/pair/${pair}/poll?after=0`)).status, 401);
+  });
 });

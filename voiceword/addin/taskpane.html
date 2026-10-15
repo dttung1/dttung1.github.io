@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Soạn bằng giọng nói</title>
+  <!-- Office.js phải được tải từ CDN của Microsoft -->
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <link rel="stylesheet" href="taskpane.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Soạn bằng giọng nói</h1>
+      <p id="host-note" class="muted"></p>
+    </div>
+    <button class="icon" id="open-settings" aria-label="Cài đặt">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </header>
+
+  <div class="seg" role="radiogroup" aria-label="Chế độ">
+    <button role="radio" data-mode="dictation" aria-checked="true">Đọc chữ</button>
+    <button role="radio" data-mode="command" aria-checked="false">Ra lệnh</button>
+  </div>
+  <p class="hint" id="mode-hint"></p>
+
+  <section class="mic-area">
+    <button id="mic" class="mic" aria-pressed="false" aria-label="Bắt đầu nghe">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg>
+    </button>
+    <div class="live" aria-live="polite">
+      <div id="status" class="status">Nhấn micro để bắt đầu</div>
+      <div id="interim" class="interim"></div>
+    </div>
+  </section>
+
+  <form id="typed" class="typed" autocomplete="off">
+    <input id="typed-input" placeholder="Hoặc gõ lệnh, ví dụ: in đậm câu vừa rồi" aria-label="Gõ lệnh hoặc nội dung">
+    <button type="submit" aria-label="Gửi">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </button>
+  </form>
+
+  <div id="confirm" class="confirm" hidden>
+    <b>Xác nhận thao tác</b>
+    <ul id="confirm-list"></ul>
+    <div class="row">
+      <button id="confirm-no" class="btn">Hủy</button>
+      <button id="confirm-yes" class="btn primary">Đồng ý</button>
+    </div>
+    <p class="muted small">Có thể nói “đồng ý” hoặc “hủy”.</p>
+  </div>
+
+  <div class="row tools">
+    <button id="undo" class="btn small" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>Hoàn tác
+    </button>
+    <button id="toggle-help" class="btn small" aria-expanded="false">Câu lệnh mẫu</button>
+  </div>
+
+  <section id="help" class="help" hidden>
+    <h2>Ở chế độ đọc chữ</h2>
+    <p>Nói nội dung bình thường. Nói <i>“chấm”, “phẩy”, “chấm hỏi”, “xuống dòng”, “mở ngoặc kép”</i> để chèn dấu.
+       Bắt đầu bằng <b>“Lệnh…”</b> để ra lệnh mà không cần đổi chế độ.</p>
+    <h2>Lệnh nhanh (chạy trên máy, không cần mạng)</h2>
+    <ul>
+      <li>in đậm / in nghiêng / gạch chân <i>câu vừa rồi</i></li>
+      <li>cỡ chữ 14 <i>cho cả văn bản</i> · phông Times New Roman</li>
+      <li>tiêu đề cấp 2 · căn giữa · căn đều hai bên · giãn dòng 1,5</li>
+      <li>gạch đầu dòng · đánh số · thụt đầu dòng</li>
+      <li>in đậm chữ <i>Hà Nội</i> · màu đỏ <i>đoạn này</i></li>
+      <li>chèn bảng 3 cột 4 hàng · ngắt trang · hoàn tác</li>
+      <li>định dạng theo thể thức văn bản hành chính</li>
+    </ul>
+    <h2>Lệnh cần AI (Claude)</h2>
+    <ul>
+      <li>chuyển các đoạn nói về ngân sách thành danh sách đánh số</li>
+      <li>viết lại đoạn này cho trang trọng hơn</li>
+      <li>soạn giấy mời họp phụ huynh vào sáng thứ bảy</li>
+      <li>tạo bảng điểm gồm họ tên, lớp, điểm toán, điểm văn</li>
+    </ul>
+  </section>
+
+  <h2 class="section">Lịch sử</h2>
+  <ol id="history" class="history"><li class="empty">Chưa có lệnh nào</li></ol>
+
+  <dialog id="settings">
+    <form method="dialog" id="settings-form">
+      <h2>Cài đặt</h2>
+      <label class="switch-row">
+        <span><b>Dùng AI cho lệnh phức tạp</b><small>Gửi câu lệnh, phần đang chọn và dàn ý văn bản tới máy chủ AI. Tắt khi làm tài liệu mật.</small></span>
+        <input type="checkbox" id="ai-enabled">
+      </label>
+      <label>Nguồn giọng nói
+        <select id="speech-source">
+          <option value="auto">Tự động (khuyên dùng)</option>
+          <option value="relay">Trang micro riêng (Word desktop)</option>
+          <option value="azure">Azure Speech trong Word</option>
+          <option value="webspeech">Trình duyệt (Word bản web)</option>
+        </select>
+      </label>
+      <label>Địa chỉ máy chủ<input id="server-url" type="url" placeholder="https://voiceword.example.com"></label>
+      <label>Mã truy cập<input id="server-token" type="password" autocomplete="off"></label>
+      <p class="muted small" id="server-status"></p>
+      <ul class="diag" id="diag" hidden></ul>
+      <div class="row">
+        <button type="button" id="test-server" class="btn">Kiểm tra micro &amp; máy chủ</button>
+        <button value="save" class="btn primary">Lưu</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="taskpane.js"></script>
+</body>
+</html>

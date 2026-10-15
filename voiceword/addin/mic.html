@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Micro · Soạn bằng giọng nói</title>
+  <link rel="icon" href="icons/icon-32.png">
+  <link rel="stylesheet" href="taskpane.css">
+  <style>
+    body { max-width: 420px; margin: 0 auto; }
+    .mic { width: 88px; height: 88px; }
+    .mic svg { width: 36px; height: 36px; }
+    .mic-area { flex-direction: column; text-align: center; padding: 22px 14px; }
+    .live { width: 100%; }
+    .last { margin-top: 12px; padding: 10px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; min-height: 44px; overflow-wrap: anywhere; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 99px; background: var(--fill); color: var(--text2); }
+    .pill i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .pill.on { background: var(--accent-soft); color: var(--ok); }
+    .pill.off { color: var(--warn); }
+    select { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+    kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Micro cho Word</h1>
+      <p class="muted">Đặt cửa sổ này cạnh Word. Chữ bạn nói sẽ được gửi vào tài liệu.</p>
+    </div>
+  </header>
+
+  <p><span id="link" class="pill"><i></i>Đang kiểm tra…</span></p>
+
+  <section class="mic-area">
+    <button id="mic" class="mic" aria-pressed="false" aria-label="Bắt đầu nghe">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg>
+    </button>
+    <div class="live" aria-live="polite">
+      <div id="status" class="status">Nhấn micro hoặc phím <kbd>Space</kbd></div>
+      <div id="interim" class="interim"></div>
+    </div>
+  </section>
+
+  <label class="row small">Nhận dạng bằng
+    <select id="source">
+      <option value="azure">Azure Speech (khuyên dùng)</option>
+      <option value="webspeech">Trình duyệt</option>
+    </select>
+  </label>
+
+  <h2 class="section">Vừa gửi</h2>
+  <div id="last" class="last muted">Chưa có</div>
+
+  <script type="module" src="mic.js"></script>
+</body>
+</html>

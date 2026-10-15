@@ -2,7 +2,7 @@
 /* global Office */
 import { parseUtterance } from './commands.js';
 import * as word from './executor.js';
-import { createRecognizer } from './speech.js';
+import { createWebSpeech, createAzureSpeech, createRelayListener, SOURCES } from './speech.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -14,11 +14,11 @@ const HINT = {
 
 // ---------- Cài đặt (lưu trên máy này) ----------
 const SETTINGS_KEY = 'voiceword.settings';
-let settings = { aiEnabled: true, serverUrl: '', token: '' };
+let settings = { aiEnabled: true, serverUrl: '', token: '', speechSource: 'auto' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}); } catch { /* bỏ qua */ }
 const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* bỏ qua */ } };
 
-const state = { mode: 'dictation', listening: false, pending: null, inWord: false };
+const state = { mode: 'dictation', listening: false, pending: null, inWord: false, platform: 'Browser' };
 
 // Ngoài Word (xem thử trên trình duyệt): chỉ mô tả thao tác, không sửa tài liệu.
 const preview = {
@@ -137,26 +137,171 @@ function cancelPending() {
 function hideConfirm() { state.pending = null; $('confirm').hidden = true; }
 
 // ---------- Giọng nói ----------
-const recognizer = createRecognizer({
+const server = () => settings.serverUrl.replace(/\/$/, '');
+const desktop = () => ['PC', 'Mac'].includes(state.platform);
+
+// Nguồn thực sự dùng: "Tự động" → Word desktop dùng trang micro riêng (micro trong khung Word không chắc dùng được),
+// Word trên web dùng nhận dạng của trình duyệt.
+function effectiveSource() {
+  if (settings.speechSource !== 'auto') return settings.speechSource;
+  return desktop() && server() ? 'relay' : 'webspeech';
+}
+
+const listening = (on) => {
+  state.listening = on;
+  $('mic').setAttribute('aria-pressed', String(on));
+  if (voice.source !== 'relay') $('mic').setAttribute('aria-label', on ? 'Dừng nghe' : 'Bắt đầu nghe');
+  setStatus(on ? (state.mode === 'dictation' ? 'Đang nghe · đọc chữ' : 'Đang nghe · ra lệnh') : idleText());
+};
+const idleText = () => (voice.source === 'relay'
+  ? (voice.connected ? 'Đã nối với trang micro · bật micro ở trang đó' : 'Nhấn để mở trang micro')
+  : 'Nhấn micro để bắt đầu');
+
+const common = {
   lang: 'vi-VN',
   onInterim: (t) => { $('interim').textContent = t; },
   onFinal: (t) => { $('interim').textContent = ''; handle(t); },
-  onState: (on) => {
-    state.listening = on;
-    $('mic').setAttribute('aria-pressed', String(on));
-    $('mic').setAttribute('aria-label', on ? 'Dừng nghe' : 'Bắt đầu nghe');
-    setStatus(on ? (state.mode === 'dictation' ? 'Đang nghe · đọc chữ' : 'Đang nghe · ra lệnh') : 'Nhấn micro để bắt đầu');
-  },
-  onError: (msg) => { setStatus(msg); $('mic').setAttribute('aria-pressed', 'false'); },
-});
+  onState: listening,
+  onError: (msg) => { listening(false); setStatus(msg); },
+};
 
-if (!recognizer.supported) {
-  $('mic').disabled = true;
-  setStatus('Môi trường này chưa hỗ trợ nhận giọng nói');
-  $('interim').textContent = 'Dùng ô nhập bên dưới, hoặc mở Word trên trình duyệt Edge/Chrome.';
+async function fetchSpeechToken() {
+  const res = await fetch(`${server()}/api/speech-token`, { headers: { Authorization: `Bearer ${settings.token}` } });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'Không lấy được mã Azure Speech');
+  return body;
 }
 
-$('mic').addEventListener('click', () => (state.listening ? recognizer.stop() : recognizer.start()));
+// Phiên ghép với trang micro: lưu lại để mở lại Word không phải ghép lần nữa (hết hạn sau 12 giờ).
+const PAIR_KEY = 'voiceword.pair';
+function savedPair() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PAIR_KEY));
+    if (p && p.server === server() && p.expiresAt > Date.now() + 60000) return p;
+  } catch { /* bỏ qua */ }
+  return null;
+}
+async function newPair() {
+  const res = await fetch(`${server()}/api/pair`, { method: 'POST', headers: { Authorization: `Bearer ${settings.token}` } });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Máy chủ trả lỗi ${res.status}`);
+  const p = { ...body, server: server() };
+  try { localStorage.setItem(PAIR_KEY, JSON.stringify(p)); } catch { /* bỏ qua */ }
+  return p;
+}
+
+const voice = { source: null, rec: null, connected: false, pair: null };
+
+function setupVoice() {
+  voice.rec?.stop();
+  voice.source = effectiveSource();
+  voice.connected = false;
+  $('mic').disabled = false;
+  $('mic').classList.toggle('relay', voice.source === 'relay');
+  $('interim').textContent = '';
+
+  if (voice.source === 'relay') {
+    $('mic').setAttribute('aria-label', 'Mở trang micro');
+    if (!server() || !settings.token) {
+      voice.rec = null;
+      setStatus('Cần máy chủ để dùng trang micro');
+      $('interim').textContent = 'Mở Cài đặt → nhập địa chỉ máy chủ và mã truy cập.';
+      return;
+    }
+    voice.pair = savedPair();
+    voice.rec = voice.pair ? listenRelay(voice.pair) : null;
+    voice.rec?.start();
+    setStatus(idleText());
+    return;
+  }
+
+  voice.rec = voice.source === 'azure'
+    ? (server() && settings.token ? createAzureSpeech({ ...common, getToken: fetchSpeechToken }) : { supported: false })
+    : createWebSpeech(common);
+  if (!voice.rec.supported) {
+    $('mic').disabled = true;
+    setStatus(voice.source === 'azure' ? 'Azure Speech cần máy chủ (Cài đặt)' : 'Môi trường này chưa hỗ trợ nhận giọng nói');
+    $('interim').textContent = desktop() ? 'Trên Word desktop, chọn “Trang micro riêng” trong Cài đặt.' : 'Dùng ô nhập bên dưới.';
+    return;
+  }
+  setStatus(idleText());
+}
+
+function listenRelay(pair) {
+  return createRelayListener({
+    serverUrl: server(),
+    appToken: settings.token,
+    pair: pair.pair,
+    onInterim: common.onInterim,
+    onFinal: common.onFinal,
+    onMic: (on) => listening(on),
+    onConnected: (on) => { voice.connected = on; if (!state.listening) setStatus(idleText()); },
+    onError: (msg, fatal) => {
+      setStatus(msg);
+      if (fatal) { voice.pair = null; try { localStorage.removeItem(PAIR_KEY); } catch { /* bỏ qua */ } }
+    },
+  });
+}
+
+async function openMicPage() {
+  try {
+    if (!voice.pair) {
+      setStatus('Đang tạo phiên ghép…');
+      voice.pair = await newPair();
+      voice.rec?.stop();
+      voice.rec = listenRelay(voice.pair);
+      voice.rec.start();
+    }
+    const url = new URL('mic.html', location.href);
+    url.hash = new URLSearchParams({ s: server(), p: voice.pair.pair, k: voice.pair.key }).toString();
+    // Word desktop: mở trình duyệt mặc định của Windows/Mac (nơi micro chắc chắn dùng được).
+    if (typeof Office !== 'undefined' && Office.context?.ui?.openBrowserWindow) Office.context.ui.openBrowserWindow(url.href);
+    else window.open(url.href, '_blank', 'noopener');
+    setStatus('Đã mở trang micro trong trình duyệt');
+  } catch (e) {
+    setStatus(e instanceof TypeError ? 'Không kết nối được máy chủ' : e.message);
+  }
+}
+
+$('mic').addEventListener('click', () => {
+  if (voice.source === 'relay') return openMicPage();
+  if (!voice.rec?.supported) return;
+  if (state.listening) voice.rec.stop(); else voice.rec.start();
+});
+
+// Kiểm tra môi trường: micro có dùng được trong khung Word không, máy chủ có Azure Speech không.
+async function diagnose() {
+  const out = [];
+  const add = (ok, text) => out.push({ ok, text });
+  add(true, `Nền tảng: ${{ PC: 'Word trên Windows', Mac: 'Word trên Mac', OfficeOnline: 'Word trên web' }[state.platform] || 'Trình duyệt (xem thử)'}`);
+  const hasWebSpeech = !!(globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition);
+  add(hasWebSpeech, `Nhận dạng của trình duyệt: ${hasWebSpeech ? 'có' : 'không có'}`);
+  let micOk = false;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((t) => t.stop());
+    micOk = true;
+    add(true, 'Micro trong khung Word: dùng được');
+  } catch (e) {
+    add(false, `Micro trong khung Word: bị chặn (${e?.name || 'không hỗ trợ'})`);
+  }
+  let health = null;
+  const url = $('server-url').value.trim().replace(/\/$/, '');
+  if (url) {
+    try {
+      health = await fetch(`${url}/health`).then((r) => r.json());
+      add(true, `Máy chủ: kết nối tốt · model ${health.model}`);
+      add(!!health.speech, `Azure Speech trên máy chủ: ${health.speech ? 'đã cấu hình' : 'chưa cấu hình'}`);
+    } catch { add(false, 'Máy chủ: không kết nối được (phải là https và cho phép CORS)'); }
+  } else add(false, 'Máy chủ: chưa nhập địa chỉ');
+
+  let tip;
+  if (micOk && health?.speech) tip = ['azure', 'Nên chọn “Azure Speech trong Word”.'];
+  else if (micOk && hasWebSpeech && state.platform === 'OfficeOnline') tip = ['webspeech', 'Nên chọn “Trình duyệt (Word bản web)”.'];
+  else if (health) tip = ['relay', 'Nên chọn “Trang micro riêng”: micro chạy trong Edge/Chrome cạnh Word.'];
+  else tip = [null, 'Cần cấu hình máy chủ để dùng giọng nói trên Word desktop. Tạm thời dùng ô nhập chữ.'];
+  return { out, tip };
+}
 
 // ---------- Giao diện ----------
 function setMode(mode) {
@@ -189,31 +334,39 @@ $('open-settings').addEventListener('click', () => {
   $('ai-enabled').checked = settings.aiEnabled;
   $('server-url').value = settings.serverUrl;
   $('server-token').value = settings.token;
-  $('server-status').textContent = '';
+  $('speech-source').value = settings.speechSource;
+  $('server-status').textContent = `Đang dùng: ${SOURCES[voice.source] || '—'}`;
+  $('diag').hidden = true;
   $('settings').showModal();
 });
 $('settings-form').addEventListener('submit', () => {
-  settings = { aiEnabled: $('ai-enabled').checked, serverUrl: $('server-url').value.trim(), token: $('server-token').value.trim() };
+  settings = {
+    aiEnabled: $('ai-enabled').checked,
+    serverUrl: $('server-url').value.trim(),
+    token: $('server-token').value.trim(),
+    speechSource: $('speech-source').value,
+  };
   saveSettings();
+  setupVoice();
 });
 $('test-server').addEventListener('click', async () => {
-  const url = $('server-url').value.trim().replace(/\/$/, '');
   $('server-status').textContent = 'Đang kiểm tra…';
-  try {
-    const res = await fetch(`${url}/health`);
-    const body = await res.json();
-    $('server-status').textContent = res.ok ? `Kết nối tốt · model ${body.model}` : `Lỗi ${res.status}`;
-  } catch {
-    $('server-status').textContent = 'Không kết nối được. Kiểm tra địa chỉ (phải là https) và cấu hình CORS của máy chủ.';
-  }
+  const { out, tip } = await diagnose();
+  $('diag').innerHTML = out.map((r) => `<li class="${r.ok ? 'good' : 'bad'}">${esc(r.text)}</li>`).join('') + `<li class="tip">${esc(tip[1])}</li>`;
+  $('diag').hidden = false;
+  $('server-status').textContent = '';
+  if (tip[0]) $('speech-source').value = tip[0];
 });
 
 setMode('dictation');
 
 if (typeof Office === 'undefined') {
   $('host-note').textContent = 'Không tải được Office.js: hãy mở trong Word.';
+  setupVoice();
 } else Office.onReady((info) => {
   state.inWord = info.host === Office.HostType.Word;
+  state.platform = Office.context?.diagnostics?.platform || 'Browser';
+  setupVoice();
   if (state.inWord && !Office.context.requirements.isSetSupported('WordApi', '1.3')) {
     $('host-note').textContent = 'Phiên bản Word này quá cũ (cần WordApi 1.3 trở lên).';
     state.inWord = false;

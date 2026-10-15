@@ -98,3 +98,10 @@ dialog input[type="url"], dialog input[type="password"] { padding: 8px 10px; bor
 .switch-row small { display: block; font-weight: 400; color: var(--text2); margin-top: 2px; }
 .switch-row input { width: 18px; height: 18px; margin-top: 2px; }
 dialog .row { justify-content: flex-end; margin-top: 14px; }
+
+dialog select { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; font-weight: 400; }
+.diag { list-style: none; padding: 8px 10px; margin: 6px 0 0; background: var(--bg); border-radius: 8px; font-size: 12px; display: grid; gap: 4px; }
+.diag .good::before { content: "✓ "; color: var(--ok); font-weight: 700; }
+.diag .bad::before { content: "✗ "; color: var(--warn); font-weight: 700; }
+.diag .tip { font-weight: 600; margin-top: 4px; }
+.mic.relay { background: var(--ai); }

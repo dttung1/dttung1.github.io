@@ -92,11 +92,20 @@
         <span><b>Dùng AI cho lệnh phức tạp</b><small>Gửi câu lệnh, phần đang chọn và dàn ý văn bản tới máy chủ AI. Tắt khi làm tài liệu mật.</small></span>
         <input type="checkbox" id="ai-enabled">
       </label>
+      <label>Nguồn giọng nói
+        <select id="speech-source">
+          <option value="auto">Tự động (khuyên dùng)</option>
+          <option value="relay">Trang micro riêng (Word desktop)</option>
+          <option value="azure">Azure Speech trong Word</option>
+          <option value="webspeech">Trình duyệt (Word bản web)</option>
+        </select>
+      </label>
       <label>Địa chỉ máy chủ<input id="server-url" type="url" placeholder="https://voiceword.example.com"></label>
       <label>Mã truy cập<input id="server-token" type="password" autocomplete="off"></label>
       <p class="muted small" id="server-status"></p>
+      <ul class="diag" id="diag" hidden></ul>
       <div class="row">
-        <button type="button" id="test-server" class="btn">Kiểm tra kết nối</button>
+        <button type="button" id="test-server" class="btn">Kiểm tra micro &amp; máy chủ</button>
         <button value="save" class="btn primary">Lưu</button>
       </div>
     </form>
